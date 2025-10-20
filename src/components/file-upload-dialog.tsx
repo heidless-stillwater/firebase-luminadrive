@@ -90,7 +90,8 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
 
     const fileDocRef = doc(firestore, `users/${user.uid}/files/${fileId}`);
     
-    const initialFileData: Omit<FileData, 'uploadedAt' | 'url'> & { uploadedAt: any } = {
+    // Create the document first with placeholder data
+    const initialFileData: Omit<FileData, 'uploadedAt' | 'uploadDate' | 'url'> = {
         id: fileId,
         name: fileToUpload.name,
         fileName: fileToUpload.name,
@@ -101,7 +102,6 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
         category: getFileType(fileToUpload),
         storagePath: storagePath,
         userId: user.uid,
-        uploadDate: serverTimestamp(),
     };
     
     setDocumentNonBlocking(fileDocRef, initialFileData, { merge: true });
@@ -121,12 +121,16 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
           title: "Upload failed",
           description: "Could not upload your file. Please try again.",
         });
-        setIsUploading(false);
+        setIsUploading(false); // Ensure state is reset on error
       },
       () => {
+        // Upload completed successfully, now get the download URL
         getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
+          // Update the document with the URL and the server timestamp
           const finalFileData = {
             url: downloadURL,
+            uploadedAt: serverTimestamp(),
+            uploadDate: serverTimestamp(),
           };
           updateDocumentNonBlocking(fileDocRef, finalFileData);
           
@@ -134,7 +138,10 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
             title: "Upload successful",
             description: `${fileToUpload.name} has been uploaded.`,
           });
+          
+          // Now, reliably close the dialog
           resetAndClose();
+
         }).catch((error) => {
            console.error("Failed to get download URL:", error);
            toast({
@@ -142,7 +149,7 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
              title: "Upload failed at final step",
              description: "Could not get file URL. Please try again.",
            });
-           setIsUploading(false);
+           setIsUploading(false); // Ensure state is reset on error
         });
       }
     );
@@ -184,7 +191,7 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
                 <FileIcon className="w-6 h-6 text-muted-foreground" />
                 <span className="text-sm font-medium truncate">{fileToUpload.name}</span>
               </div>
-              <Button variant="ghost" size="icon" onClick={() => setFileToUpload(null)} disabled={isUploading}>
+              <Button variant="ghost" size="icon" onClick={() => { if (!isUploading) setFileToUpload(null); }} disabled={isUploading}>
                 <X className="w-4 h-4" />
               </Button>
             </div>
@@ -197,7 +204,7 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
             </div>
           )}
           
-          {uploadProgress === 100 && (
+          {uploadProgress === 100 && !isUploading && (
             <div className="mt-4 flex items-center justify-center gap-2 text-green-600">
                 <CheckCircle2 className="h-5 w-5" />
                 <p className="text-sm font-medium">Upload Complete!</p>
@@ -207,7 +214,7 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
         </div>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline" onClick={resetAndClose} disabled={isUploading}>Cancel</Button>
+            <Button variant="outline" disabled={isUploading}>Cancel</Button>
           </DialogClose>
           <Button onClick={handleUpload} disabled={!fileToUpload || isUploading}>
             {isUploading ? "Uploading..." : "Upload"}
