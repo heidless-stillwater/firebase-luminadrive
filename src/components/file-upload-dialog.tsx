@@ -23,7 +23,7 @@ function getFileType(file: File): FileType {
     if (["image", "video", "audio"].includes(fileType)) {
         return fileType as "image" | "video" | "audio";
     }
-    if (file.name.endsWith('.pdf') || file.name.endsWith('.docx')) {
+    if (file.name.endsWith('.pdf') || file.type === 'application/pdf' || file.type.includes('document')) {
         return 'document';
     }
     return 'other';
@@ -134,11 +134,8 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
           title: "Upload successful",
           description: `${fileToUpload.name} has been uploaded.`,
         });
-
-        setIsUploading(false);
-        setTimeout(() => {
-          resetAndClose();
-        }, 1000);
+        
+        resetAndClose();
       }
     );
   };
@@ -151,7 +148,7 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(isOpen) => { if (!isUploading) onOpenChange(isOpen) }}>
       <DialogContent className="sm:max-w-[425px]" onInteractOutside={(e) => { if (isUploading) e.preventDefault(); }}>
         <DialogHeader>
           <DialogTitle>Upload File</DialogTitle>
@@ -192,7 +189,7 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
             </div>
           )}
 
-          {isUploading && (
+          {isUploading && uploadProgress < 100 && (
             <div className="mt-4">
               <Progress value={uploadProgress} className="w-full" />
               <p className="text-sm text-center text-muted-foreground mt-2">{uploadProgress.toFixed(0)}%</p>
