@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { File as FileData, FileType } from "@/types";
 import { cn } from "@/lib/utils";
 import { useFirestore, useUser } from "@/firebase";
-import { doc, serverTimestamp } from "firebase/firestore";
+import { doc, serverTimestamp, collection } from "firebase/firestore";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { setDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
@@ -90,7 +90,7 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
 
     const fileDocRef = doc(firestore, `users/${user.uid}/files/${fileId}`);
     
-    const initialFileData: Partial<FileData> = {
+    const initialFileData: Omit<FileData, 'uploadedAt' | 'url'> & { uploadedAt: any } = {
         id: fileId,
         name: fileToUpload.name,
         fileName: fileToUpload.name,
@@ -101,7 +101,7 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
         category: getFileType(fileToUpload),
         storagePath: storagePath,
         userId: user.uid,
-        uploadedAt: serverTimestamp()
+        uploadDate: serverTimestamp(),
     };
     
     setDocumentNonBlocking(fileDocRef, initialFileData, { merge: true });
@@ -121,23 +121,29 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
           title: "Upload failed",
           description: "Could not upload your file. Please try again.",
         });
-        setIsUploading(false); // Reset on error
+        setIsUploading(false);
       },
-      async () => {
-        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-        
-        const finalFileData = {
-          url: downloadURL,
-        };
-        
-        updateDocumentNonBlocking(fileDocRef, finalFileData);
-
-        toast({
-          title: "Upload successful",
-          description: `${fileToUpload.name} has been uploaded.`,
+      () => {
+        getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
+          const finalFileData = {
+            url: downloadURL,
+          };
+          updateDocumentNonBlocking(fileDocRef, finalFileData);
+          
+          toast({
+            title: "Upload successful",
+            description: `${fileToUpload.name} has been uploaded.`,
+          });
+          resetAndClose();
+        }).catch((error) => {
+           console.error("Failed to get download URL:", error);
+           toast({
+             variant: "destructive",
+             title: "Upload failed at final step",
+             description: "Could not get file URL. Please try again.",
+           });
+           setIsUploading(false);
         });
-        
-        resetAndClose();
       }
     );
   };
@@ -191,7 +197,7 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
             </div>
           )}
           
-          {uploadProgress === 100 && !isUploading && (
+          {uploadProgress === 100 && (
             <div className="mt-4 flex items-center justify-center gap-2 text-green-600">
                 <CheckCircle2 className="h-5 w-5" />
                 <p className="text-sm font-medium">Upload Complete!</p>
