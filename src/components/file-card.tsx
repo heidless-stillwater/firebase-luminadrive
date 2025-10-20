@@ -10,6 +10,7 @@ import { MoreVertical, Download, Trash2, FileText, Image as ImageIcon, Video, Mu
 import type { File as FileData, FileType } from "@/types";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
 import { Badge } from "@/components/ui/badge";
+import { useState, useEffect } from "react";
 
 interface FileCardProps {
   file: FileData;
@@ -35,6 +36,22 @@ const getFileIcon = (file: FileData): ReactNode => {
 }
 
 export function FileCard({ file, isSelected, onSelectionChange, onDelete, onDownload }: FileCardProps) {
+  const [formattedDate, setFormattedDate] = useState("");
+  const [relativeDate, setRelativeDate] = useState("");
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (isMounted) {
+      const date = new Date(file.uploadedAt);
+      setFormattedDate(format(date, "PPP p"));
+      setRelativeDate(formatDistanceToNow(date, { addSuffix: true }));
+    }
+  }, [file.uploadedAt, isMounted]);
+
   const placeholderData = file.type === 'image' ? PlaceHolderImages.find(p => p.id === file.id) : undefined;
   
   return (
@@ -83,7 +100,11 @@ export function FileCard({ file, isSelected, onSelectionChange, onDelete, onDown
         <p className="text-xs text-muted-foreground">{file.size}</p>
       </CardContent>
       <CardFooter className="text-xs text-muted-foreground pt-2">
-        <p title={format(file.uploadedAt, "PPP p")}>{formatDistanceToNow(file.uploadedAt, { addSuffix: true })}</p>
+        {isMounted ? (
+            <p title={formattedDate}>{relativeDate}</p>
+        ) : (
+            <div className="h-4 w-24 bg-muted rounded-md animate-pulse" />
+        )}
       </CardFooter>
     </Card>
   );
