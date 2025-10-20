@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { File as FileData, FileType } from "@/types";
 import { cn } from "@/lib/utils";
 import { useFirestore, useUser } from "@/firebase";
-import { collection, doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { doc, serverTimestamp } from "firebase/firestore";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { setDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
@@ -69,6 +69,13 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
     setIsDragging(false);
     handleFileSelect(e.dataTransfer.files);
   };
+  
+  const resetAndClose = () => {
+    setFileToUpload(null);
+    setUploadProgress(0);
+    setIsUploading(false);
+    onOpenChange(false);
+  }
 
   const handleUpload = () => {
     if (!fileToUpload || !user) return;
@@ -77,13 +84,13 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
     setUploadProgress(0);
 
     const storage = getStorage();
-    const fileId = crypto.randomUUID();
+    const fileId = doc(collection(firestore, '_')).id; // Generate a new ID
     const storagePath = `users/${user.uid}/files/${fileId}-${fileToUpload.name}`;
     const storageRef = ref(storage, storagePath);
 
     const fileDocRef = doc(firestore, `users/${user.uid}/files/${fileId}`);
     
-    const initialFileData: Omit<FileData, 'uploadDate' | 'uploadedAt' | 'url'> = {
+    const initialFileData: Partial<FileData> = {
         id: fileId,
         name: fileToUpload.name,
         fileName: fileToUpload.name,
@@ -94,9 +101,10 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
         category: getFileType(fileToUpload),
         storagePath: storagePath,
         userId: user.uid,
+        uploadedAt: serverTimestamp()
     };
     
-    setDocumentNonBlocking(fileDocRef, { ...initialFileData, uploadedAt: new Date() }, { merge: true });
+    setDocumentNonBlocking(fileDocRef, initialFileData, { merge: true });
 
     const uploadTask = uploadBytesResumable(storageRef, fileToUpload);
 
@@ -113,15 +121,13 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
           title: "Upload failed",
           description: "Could not upload your file. Please try again.",
         });
-        setIsUploading(false);
+        setIsUploading(false); // Reset on error
       },
       async () => {
         const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
         
         const finalFileData = {
           url: downloadURL,
-          uploadDate: serverTimestamp(),
-          uploadedAt: serverTimestamp(),
         };
         
         updateDocumentNonBlocking(fileDocRef, finalFileData);
@@ -135,13 +141,6 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
       }
     );
   };
-  
-  const resetAndClose = () => {
-    setFileToUpload(null);
-    setUploadProgress(0);
-    setIsUploading(false);
-    onOpenChange(false);
-  }
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isUploading) onOpenChange(isOpen) }}>
@@ -192,7 +191,7 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
             </div>
           )}
           
-          {uploadProgress === 100 && (
+          {uploadProgress === 100 && !isUploading && (
             <div className="mt-4 flex items-center justify-center gap-2 text-green-600">
                 <CheckCircle2 className="h-5 w-5" />
                 <p className="text-sm font-medium">Upload Complete!</p>
