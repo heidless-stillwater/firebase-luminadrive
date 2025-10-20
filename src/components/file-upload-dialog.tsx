@@ -6,16 +6,27 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { UploadCloud, File as FileIcon, X, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { File as FileData } from "@/types";
+import type { File as FileData, FileType } from "@/types";
 import { cn } from "@/lib/utils";
-import { useAuth, useFirestore, useUser } from "@/firebase";
-import { collection, doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { useFirestore, useUser } from "@/firebase";
+import { collection, doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { addDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
+import { setDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
 interface FileUploadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+function getFileType(file: File): FileType {
+    const fileType = file.type.split("/")[0];
+    if (["image", "video", "audio"].includes(fileType)) {
+        return fileType as "image" | "video" | "audio";
+    }
+    if (file.name.endsWith('.pdf') || file.name.endsWith('.docx')) {
+        return 'document';
+    }
+    return 'other';
 }
 
 export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) {
@@ -69,6 +80,28 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
     const storagePath = `users/${user.uid}/files/${fileId}-${fileToUpload.name}`;
     const storageRef = ref(storage, storagePath);
 
+    const fileDocRef = doc(firestore, `users/${user.uid}/files/${fileId}`);
+    
+    // Create the document first with client-side data
+    const initialFileData: FileData = {
+        id: fileId,
+        name: fileToUpload.name,
+        fileName: fileToUpload.name,
+        size: `${(fileToUpload.size / (1024 * 1024)).toFixed(2)} MB`,
+        fileSize: fileToUpload.size,
+        type: getFileType(fileToUpload),
+        fileType: fileToUpload.type,
+        category: getFileType(fileToUpload),
+        uploadedAt: new Date(), // Client-side timestamp for immediate UI
+        uploadDate: new Date(), // This will be replaced by serverTimestamp
+        url: '', // Will be updated later
+        storagePath: storagePath,
+        userId: user.uid,
+    };
+
+    setDocumentNonBlocking(fileDocRef, initialFileData, { merge: true });
+
+
     const uploadTask = uploadBytesResumable(storageRef, fileToUpload);
 
     uploadTask.on(
@@ -88,36 +121,21 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
       },
       async () => {
         const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-        const fileType = fileToUpload.type.split("/")[0];
-
-        const fileData: Omit<FileData, 'id'> = {
-          name: fileToUpload.name,
-          size: `${(fileToUpload.size / (1024 * 1024)).toFixed(2)} MB`,
-          type: ["image", "video", "audio"].includes(fileType) ? fileType as "image" | "video" | "audio" : (fileToUpload.name.endsWith('.pdf') || fileToUpload.name.endsWith('.docx') ? 'document' : 'other'),
-          uploadedAt: new Date(),
-          url: downloadURL,
-          storagePath,
-          userId: user.uid,
-          fileType: fileToUpload.type,
-          fileSize: fileToUpload.size,
-          category: fileToUpload.type.split('/')[0] || 'other',
-          uploadDate: serverTimestamp(),
-        };
-
-        const fileDocRef = doc(firestore, `users/${user.uid}/files/${fileId}`);
         
-        setDocumentNonBlocking(fileDocRef, {
-            id: fileId,
-            ...fileData
-        }, { merge: true });
-
-        setIsUploading(false); // Move this here
+        const finalFileData = {
+          url: downloadURL,
+          uploadDate: serverTimestamp(),
+          uploadedAt: serverTimestamp(), // For correct sorting/display
+        };
+        
+        updateDocumentNonBlocking(fileDocRef, finalFileData);
 
         toast({
           title: "Upload successful",
           description: `${fileToUpload.name} has been uploaded.`,
         });
 
+        setIsUploading(false);
         setTimeout(() => {
           resetAndClose();
         }, 1000);
@@ -181,7 +199,7 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
             </div>
           )}
 
-          {uploadProgress === 100 && !isUploading && (
+          {uploadProgress === 100 && (
             <div className="mt-4 flex items-center justify-center gap-2 text-green-600">
                 <CheckCircle2 className="h-5 w-5" />
                 <p className="text-sm font-medium">Upload Complete!</p>

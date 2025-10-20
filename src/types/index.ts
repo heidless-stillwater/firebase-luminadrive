@@ -1,4 +1,4 @@
-import { FieldValue } from "firebase/firestore";
+import { FieldValue, Timestamp } from "firebase/firestore";
 
 export type FileType = 'image' | 'document' | 'video' | 'audio' | 'other';
 
@@ -7,13 +7,13 @@ export type File = {
   name: string;
   type: FileType;
   size: string;
-  uploadedAt: Date;
+  uploadedAt: Date | Timestamp | FieldValue;
   url: string;
   storagePath: string;
   userId: string;
   fileName: string;
   fileType: string;
   fileSize: number;
-  uploadDate: FieldValue;
+  uploadDate: Date | FieldValue;
   category: string;
 };
