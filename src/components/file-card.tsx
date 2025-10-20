@@ -11,6 +11,7 @@ import type { File as FileData, FileType } from "@/types";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
 import { Badge } from "@/components/ui/badge";
 import { useState, useEffect } from "react";
+import { Timestamp } from "firebase/firestore";
 
 interface FileCardProps {
   file: FileData;
@@ -45,10 +46,21 @@ export function FileCard({ file, isSelected, onSelectionChange, onDelete, onDown
   }, []);
 
   useEffect(() => {
-    if (isMounted) {
-      const date = new Date(file.uploadedAt);
-      setFormattedDate(format(date, "PPP p"));
-      setRelativeDate(formatDistanceToNow(date, { addSuffix: true }));
+    if (isMounted && file.uploadedAt) {
+      let date: Date;
+      if (file.uploadedAt instanceof Timestamp) {
+        date = file.uploadedAt.toDate();
+      } else if (file.uploadedAt instanceof Date) {
+        date = file.uploadedAt;
+      } else {
+        // Fallback for string or number representation, though less likely with Firestore
+        date = new Date(file.uploadedAt as any);
+      }
+      
+      if (!isNaN(date.getTime())) {
+        setFormattedDate(format(date, "PPP p"));
+        setRelativeDate(formatDistanceToNow(date, { addSuffix: true }));
+      }
     }
   }, [file.uploadedAt, isMounted]);
 
@@ -100,7 +112,7 @@ export function FileCard({ file, isSelected, onSelectionChange, onDelete, onDown
         <p className="text-xs text-muted-foreground">{file.size}</p>
       </CardContent>
       <CardFooter className="text-xs text-muted-foreground pt-2">
-        {isMounted ? (
+        {isMounted && relativeDate ? (
             <p title={formattedDate}>{relativeDate}</p>
         ) : (
             <div className="h-4 w-24 bg-muted rounded-md animate-pulse" />
