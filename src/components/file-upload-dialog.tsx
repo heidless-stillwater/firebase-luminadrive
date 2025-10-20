@@ -8,20 +8,25 @@ import { UploadCloud, File as FileIcon, X, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { File as FileData } from "@/types";
 import { cn } from "@/lib/utils";
+import { useAuth, useFirestore, useUser } from "@/firebase";
+import { collection, doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { addDocumentNonBlocking, setDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
 interface FileUploadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onFileUpload: (file: FileData) => void;
 }
 
-export function FileUploadDialog({ open, onOpenChange, onFileUpload }: FileUploadDialogProps) {
+export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [fileToUpload, setFileToUpload] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const firestore = useFirestore();
+  const { user } = useUser();
 
   const handleFileSelect = (files: FileList | null) => {
     if (files && files[0]) {
@@ -54,36 +59,68 @@ export function FileUploadDialog({ open, onOpenChange, onFileUpload }: FileUploa
   };
 
   const handleUpload = () => {
-    if (!fileToUpload) return;
+    if (!fileToUpload || !user) return;
 
     setIsUploading(true);
-    const interval = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsUploading(false);
-          
-          const newFile: FileData = {
-            id: crypto.randomUUID(),
-            name: fileToUpload.name,
-            size: `${(fileToUpload.size / (1024 * 1024)).toFixed(2)} MB`,
-            type: fileToUpload.type.startsWith("image") ? "image" : "document",
-            uploadedAt: new Date(),
-            url: fileToUpload.type.startsWith("image") ? URL.createObjectURL(fileToUpload) : "#",
-          };
+    setUploadProgress(0);
 
-          onFileUpload(newFile);
-          toast({
-            title: "Upload successful",
-            description: `${fileToUpload.name} has been uploaded.`,
-            variant: 'default',
-          });
+    const storage = getStorage();
+    const fileId = crypto.randomUUID();
+    const storagePath = `users/${user.uid}/files/${fileId}-${fileToUpload.name}`;
+    const storageRef = ref(storage, storagePath);
+
+    const uploadTask = uploadBytesResumable(storageRef, fileToUpload);
+
+    uploadTask.on(
+      "state_changed",
+      (snapshot) => {
+        const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+        setUploadProgress(progress);
+      },
+      (error) => {
+        console.error("Upload failed:", error);
+        toast({
+          variant: "destructive",
+          title: "Upload failed",
+          description: "Could not upload your file. Please try again.",
+        });
+        setIsUploading(false);
+      },
+      async () => {
+        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+        const fileType = fileToUpload.type.split("/")[0];
+
+        const fileData: Omit<FileData, 'id'> = {
+          name: fileToUpload.name,
+          size: `${(fileToUpload.size / (1024 * 1024)).toFixed(2)} MB`,
+          type: ["image", "video", "audio"].includes(fileType) ? fileType as "image" | "video" | "audio" : (fileToUpload.name.endsWith('.pdf') || fileToUpload.name.endsWith('.docx') ? 'document' : 'other'),
+          uploadedAt: new Date(),
+          url: downloadURL,
+          storagePath,
+          userId: user.uid,
+          fileType: fileToUpload.type,
+          fileSize: fileToUpload.size,
+          category: fileToUpload.type.split('/')[0] || 'other',
+          uploadDate: serverTimestamp(),
+        };
+
+        const fileDocRef = doc(firestore, `users/${user.uid}/files/${fileId}`);
+        
+        setDocumentNonBlocking(fileDocRef, {
+            id: fileId,
+            ...fileData
+        }, { merge: true });
+
+        toast({
+          title: "Upload successful",
+          description: `${fileToUpload.name} has been uploaded.`,
+        });
+
+        setTimeout(() => {
           resetAndClose();
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 200);
+        }, 1000);
+      }
+    );
   };
   
   const resetAndClose = () => {
@@ -138,7 +175,7 @@ export function FileUploadDialog({ open, onOpenChange, onFileUpload }: FileUploa
           {isUploading && (
             <div className="mt-4">
               <Progress value={uploadProgress} className="w-full" />
-              <p className="text-sm text-center text-muted-foreground mt-2">{uploadProgress}%</p>
+              <p className="text-sm text-center text-muted-foreground mt-2">{uploadProgress.toFixed(0)}%</p>
             </div>
           )}
 
@@ -152,7 +189,7 @@ export function FileUploadDialog({ open, onOpenChange, onFileUpload }: FileUploa
         </div>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline" disabled={isUploading}>Cancel</Button>
+            <Button variant="outline" onClick={resetAndClose} disabled={isUploading}>Cancel</Button>
           </DialogClose>
           <Button onClick={handleUpload} disabled={!fileToUpload || isUploading}>
             {isUploading ? "Uploading..." : "Upload"}

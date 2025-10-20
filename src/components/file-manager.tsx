@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, type ReactNode } from "react";
+import { useState, useMemo, type ReactNode, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { File as FileData, FileType } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,10 @@ import { FileCard } from "@/components/file-card";
 import { FileUploadDialog } from "@/components/file-upload-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { HardDrive, Upload, Trash2, X, FileText, Image as ImageIcon, Video, Music, File as FileIcon, Folder } from 'lucide-react';
+import { useAuth, useFirestore, useCollection, useUser, useMemoFirebase } from "@/firebase";
+import { collection, doc, deleteDoc, getFirestore } from "firebase/firestore";
+import { getStorage, ref, deleteObject, getDownloadURL } from 'firebase/storage';
+import { deleteDocumentNonBlocking } from "@/firebase/non-blocking-updates";
 
 const categories: { value: FileType | 'all'; label: string, icon: ReactNode }[] = [
   { value: 'all', label: 'All Files', icon: <Folder className="h-4 w-4" /> },
@@ -20,8 +24,13 @@ const categories: { value: FileType | 'all'; label: string, icon: ReactNode }[] 
   { value: 'other', label: 'Other', icon: <FileIcon className="h-4 w-4" /> },
 ];
 
-export function FileManager({ initialFiles }: { initialFiles: FileData[] }) {
-  const [files, setFiles] = useState<FileData[]>(initialFiles);
+export function FileManager() {
+  const { user } = useUser();
+  const firestore = useFirestore();
+
+  const filesCollection = useMemoFirebase(() => user ? collection(firestore, "users", user.uid, "files") : null, [firestore, user]);
+  const { data: files, isLoading } = useCollection<FileData>(filesCollection);
+
   const [activeCategory, setActiveCategory] = useState<FileType | 'all'>('all');
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   const [isUploadOpen, setUploadOpen] = useState(false);
@@ -31,10 +40,11 @@ export function FileManager({ initialFiles }: { initialFiles: FileData[] }) {
   const { toast } = useToast();
 
   const filteredFiles = useMemo(() => {
-    if (activeCategory === 'all') return files;
-    return files.filter(file => file.type === activeCategory);
+    const sortedFiles = files ? [...files].sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime()) : [];
+    if (activeCategory === 'all') return sortedFiles;
+    return sortedFiles.filter(file => file.type === activeCategory);
   }, [files, activeCategory]);
-
+  
   const handleSelectionChange = (fileId: string, isSelected: boolean) => {
     const newSelection = new Set(selectedFiles);
     if (isSelected) {
@@ -62,42 +72,79 @@ export function FileManager({ initialFiles }: { initialFiles: FileData[] }) {
     setDeleteConfirmOpen(true);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
+    if (!user) return;
+    const storage = getStorage();
     let deletedCount = 0;
+
+    const deleteFile = async (fileId: string) => {
+        const file = files?.find(f => f.id === fileId);
+        if (file) {
+            try {
+                const fileRef = doc(firestore, "users", user.uid, "files", fileId);
+                deleteDocumentNonBlocking(fileRef);
+
+                if (file.storagePath) {
+                    const storageRef = ref(storage, file.storagePath);
+                    await deleteObject(storageRef);
+                }
+                deletedCount++;
+            } catch (error) {
+                console.error("Error deleting file:", error);
+                toast({
+                    variant: "destructive",
+                    title: "Error deleting file",
+                    description: `Could not delete ${file.name}.`,
+                });
+            }
+        }
+    };
+
     if (fileToDelete) {
-      setFiles(files.filter(f => f.id !== fileToDelete));
-      deletedCount = 1;
+        await deleteFile(fileToDelete);
     } else if (selectedFiles.size > 0) {
-      setFiles(files.filter(f => !selectedFiles.has(f.id)));
-      deletedCount = selectedFiles.size;
-      setSelectedFiles(new Set());
+        await Promise.all(Array.from(selectedFiles).map(id => deleteFile(id)));
+        setSelectedFiles(new Set());
     }
 
     toast({
-      title: "File(s) deleted",
-      description: `${deletedCount} file(s) have been permanently deleted.`,
+        title: "File(s) deleted",
+        description: `${deletedCount} file(s) have been permanently deleted.`,
     });
+
     setFileToDelete(null);
     setDeleteConfirmOpen(false);
-  };
+};
 
-  const handleDownload = (file: FileData) => {
-    toast({
-      title: "Preparing download...",
-      description: `Your download for ${file.name} will start shortly.`,
-    });
-    // In a real app, this would trigger a file download.
-    const link = document.createElement('a');
-    link.href = file.url;
-    link.download = file.name;
-    link.target = '_blank';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
+  const handleDownload = async (file: FileData) => {
+    if(!user) return;
+    const storage = getStorage();
 
-  const handleFileUpload = (newFile: FileData) => {
-    setFiles([newFile, ...files]);
+    try {
+        const storageRef = ref(storage, file.storagePath);
+        const url = await getDownloadURL(storageRef);
+        
+        toast({
+          title: "Preparing download...",
+          description: `Your download for ${file.name} will start shortly.`,
+        });
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = file.name;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+    } catch (error) {
+        console.error("Error getting download URL:", error);
+        toast({
+            variant: "destructive",
+            title: "Download failed",
+            description: `Could not get download link for ${file.name}.`,
+        });
+    }
   };
 
   return (
@@ -107,7 +154,7 @@ export function FileManager({ initialFiles }: { initialFiles: FileData[] }) {
           <HardDrive className="h-8 w-8 text-primary" />
           <h1 className="text-3xl font-bold tracking-tight">LuminaDrive</h1>
         </div>
-        <Button onClick={() => setUploadOpen(true)}>
+        <Button onClick={() => setUploadOpen(true)} disabled={!user}>
           <Upload className="mr-2 h-4 w-4" />
           Upload File
         </Button>
@@ -156,7 +203,16 @@ export function FileManager({ initialFiles }: { initialFiles: FileData[] }) {
           transition={{ duration: 0.2 }}
           className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"
         >
-          {filteredFiles.map((file) => (
+          {isLoading && Array.from({ length: 8 }).map((_, i) => (
+             <div key={i} className="flex flex-col space-y-3">
+              <div className="h-[125px] w-full rounded-xl bg-muted animate-pulse" />
+              <div className="space-y-2">
+                <div className="h-4 w-[250px] bg-muted animate-pulse rounded-md" />
+                <div className="h-4 w-[200px] bg-muted animate-pulse rounded-md" />
+              </div>
+            </div>
+          ))}
+          {!isLoading && filteredFiles.map((file) => (
             <FileCard
               key={file.id}
               file={file}
@@ -169,14 +225,14 @@ export function FileManager({ initialFiles }: { initialFiles: FileData[] }) {
         </motion.div>
       </AnimatePresence>
       
-      {filteredFiles.length === 0 && (
+      {!isLoading && filteredFiles.length === 0 && (
         <div className="text-center py-20 bg-muted/50 rounded-lg">
           <p className="text-lg font-medium">No files here yet</p>
           <p className="text-muted-foreground mt-2">Upload your first file to get started.</p>
         </div>
       )}
 
-      <FileUploadDialog open={isUploadOpen} onOpenChange={setUploadOpen} onFileUpload={handleFileUpload} />
+      <FileUploadDialog open={isUploadOpen} onOpenChange={setUploadOpen} />
 
       <AlertDialog open={isDeleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
         <AlertDialogContent>
