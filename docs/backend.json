@@ -1,0 +1,129 @@
+{
+  "entities": {
+    "File": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "File",
+      "type": "object",
+      "description": "Represents a file stored in LuminaDrive.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the file."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the User who owns the file. (Relationship: User 1:N File)"
+        },
+        "fileName": {
+          "type": "string",
+          "description": "The name of the file."
+        },
+        "fileType": {
+          "type": "string",
+          "description": "The type or extension of the file."
+        },
+        "fileSize": {
+          "type": "number",
+          "description": "The size of the file in bytes."
+        },
+        "uploadDate": {
+          "type": "string",
+          "description": "The date and time when the file was uploaded.",
+          "format": "date-time"
+        },
+        "storagePath": {
+          "type": "string",
+          "description": "The path to the file in Firebase Cloud Storage."
+        },
+        "category": {
+          "type": "string",
+          "description": "The category the file belongs to."
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "fileName",
+        "fileType",
+        "fileSize",
+        "uploadDate",
+        "storagePath",
+        "category"
+      ]
+    },
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user of the LuminaDrive application.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the user."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address.",
+          "format": "email"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "The date and time the user account was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "createdAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profile information. Each user has their own document.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/users/{userId}/files/{fileId}",
+        "definition": {
+          "entityName": "File",
+          "schema": {
+            "$ref": "#/backend/entities/File"
+          },
+          "description": "Stores file metadata. Path-based ownership: only the user with the matching userId can access the file. Includes denormalized 'userId' for authorization independence.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier for the user who owns the file."
+            },
+            {
+              "name": "fileId",
+              "description": "The unique identifier for the file."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to ensure secure and scalable storage for LuminaDrive files, focusing on authorization independence and clear access patterns. The primary structure revolves around user-owned files, leveraging path-based ownership to simplify security rules. Each user has a dedicated collection of files under `/users/{userId}/files/{fileId}`, which ensures that only the authenticated user can access their files. This design supports atomic operations and simplifies debugging.\n\nThe `/users/{userId}/files/{fileId}` structure achieves Authorization Independence because access control is based solely on the authenticated user's ID (`request.auth.uid`) matching the `userId` in the file document or the path itself. No `get()` calls are required to validate ownership, thus enabling atomic operations and easier debugging. This structure also inherently supports the required QAPs (Rules Are Not Filters) because listing files is always scoped to a specific user ID, preventing unauthorized access to other users' files. The structure is segregated because each user's files are in separate collections, thus enforcing a homogeneous security posture."
+  }
+}

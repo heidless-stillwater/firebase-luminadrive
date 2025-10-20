@@ -1,0 +1,69 @@
+/**
+ * @file Firestore Security Rules for LuminaDrive
+ *
+ * @core_philosophy This ruleset enforces a strict user-ownership model. Each user has exclusive access to their profile data and associated files.
+ * @data_structure All data is nested under /users/{userId}, with user profiles directly under /users/{userId} and files under /users/{userId}/files/{fileId}.
+ * @key_security_decisions
+ *   - Users can only create, read, update, and delete their own files and profile data.
+ *   - Listing files is restricted to the owner of those files.
+ *   - No public access is allowed.
+ */
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * @description Controls access to user profile documents.
+     * @path /users/{userId}
+     * @allow (create) User 'test_user' with ID 'test_user' can create their own profile.
+     * @allow (get) User 'test_user' can read their own profile.
+     * @allow (update) User 'test_user' can update their own profile.
+     * @allow (delete) User 'test_user' can delete their own profile.
+     * @deny (create) User 'another_user' cannot create a profile with ID 'test_user'.
+     * @deny (get) User 'another_user' cannot read user 'test_user' profile.
+     * @principle Enforces document ownership for all operations.
+     */
+    match /users/{userId} {
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+
+      function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
+
+      allow get: if isOwner(userId);
+      allow list: if false;
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId);
+    }
+
+    /**
+     * @description Controls access to file metadata documents.
+     * @path /users/{userId}/files/{fileId}
+     * @allow (create) User 'test_user' can create a file under their user ID.
+     * @allow (get) User 'test_user' can read a file under their user ID.
+     * @allow (update) User 'test_user' can update a file under their user ID.
+     * @allow (delete) User 'test_user' can delete a file under their user ID.
+     * @deny (create) User 'another_user' cannot create a file under user 'test_user' ID.
+     * @deny (get) User 'another_user' cannot read a file under user 'test_user' ID.
+     * @principle Enforces document ownership for all operations.
+     */
+    match /users/{userId}/files/{fileId} {
+      function isOwner(userId) {
+        return request.auth.uid == userId;
+      }
+
+      function isExistingOwner(userId) {
+        return isOwner(userId) && resource != null;
+      }
+
+      allow get: if isOwner(userId);
+      allow list: if isOwner(userId);
+      allow create: if isOwner(userId) && request.resource.data.userId == userId;
+      allow update: if isExistingOwner(userId) && request.resource.data.userId == resource.data.userId;
+      allow delete: if isExistingOwner(userId);
+    }
+  }
+}
