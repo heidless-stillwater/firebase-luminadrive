@@ -111,6 +111,8 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
             ...fileData
         }, { merge: true });
 
+        setIsUploading(false); // Move this here
+
         toast({
           title: "Upload successful",
           description: `${fileToUpload.name} has been uploaded.`,
