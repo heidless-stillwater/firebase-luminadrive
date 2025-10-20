@@ -1,3 +1,22 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "1",
+      "description": "A placeholder image for a summer vacation photo.",
+      "imageUrl": "https://images.unsplash.com/photo-1670781111177-92f71d7fe53f?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwzfHx2YWNhdGlvbiUyMGJlYWNofGVufDB8fHx8MTc2MDk2ODI2Nnww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "vacation beach"
+    },
+    {
+      "id": "6",
+      "description": "A placeholder image for new logo mockups.",
+      "imageUrl": "https://images.unsplash.com/photo-1498075702571-ecb018f3752d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwzfHxsb2dvJTIwZGVzaWdufGVufDB8fHx8MTc2MDkzMzg4MHww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "logo design"
+    },
+    {
+      "id": "10",
+      "description": "A placeholder image for a sunset at the lake.",
+      "imageUrl": "https://images.unsplash.com/photo-1572889464105-3d3f39ee2cf7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw1fHxzdW5zZXQlMjBsYWtlfGVufDB8fHx8MTc2MDk2ODI2Nnww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "sunset lake"
+    }
+  ]
 }
