@@ -6,7 +6,7 @@ import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { format, formatDistanceToNow } from "date-fns";
-import { MoreVertical, Download, Trash2, FileText, Image as ImageIcon, Video, Music, File as FileIcon, FolderZip } from "lucide-react";
+import { MoreVertical, Download, Trash2, FileText, Image as ImageIcon, Video, Music, File as FileIcon, FileArchive } from "lucide-react";
 import type { File as FileData, FileType } from "@/types";
 import { PlaceHolderImages } from "@/lib/placeholder-images";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +29,7 @@ const fileTypeIcons: Record<FileType, ReactNode> = {
 
 const getFileIcon = (file: FileData): ReactNode => {
     if (file.name.endsWith('.zip')) {
-        return <FolderZip className="h-10 w-10 text-muted-foreground" />;
+        return <FileArchive className="h-10 w-10 text-muted-foreground" />;
     }
     return fileTypeIcons[file.type];
 }
