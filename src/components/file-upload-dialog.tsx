@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, type ChangeEvent, type DragEvent } from "react";
@@ -82,8 +83,7 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
 
     const fileDocRef = doc(firestore, `users/${user.uid}/files/${fileId}`);
     
-    // Create the document first with client-side data
-    const initialFileData: FileData = {
+    const initialFileData: Omit<FileData, 'uploadDate' | 'uploadedAt' | 'url'> = {
         id: fileId,
         name: fileToUpload.name,
         fileName: fileToUpload.name,
@@ -92,15 +92,11 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
         type: getFileType(fileToUpload),
         fileType: fileToUpload.type,
         category: getFileType(fileToUpload),
-        uploadedAt: new Date(), // Client-side timestamp for immediate UI
-        uploadDate: new Date(), // This will be replaced by serverTimestamp
-        url: '', // Will be updated later
         storagePath: storagePath,
         userId: user.uid,
     };
-
-    setDocumentNonBlocking(fileDocRef, initialFileData, { merge: true });
-
+    
+    setDocumentNonBlocking(fileDocRef, { ...initialFileData, uploadedAt: new Date() }, { merge: true });
 
     const uploadTask = uploadBytesResumable(storageRef, fileToUpload);
 
@@ -125,7 +121,7 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
         const finalFileData = {
           url: downloadURL,
           uploadDate: serverTimestamp(),
-          uploadedAt: serverTimestamp(), // For correct sorting/display
+          uploadedAt: serverTimestamp(),
         };
         
         updateDocumentNonBlocking(fileDocRef, finalFileData);
@@ -189,13 +185,13 @@ export function FileUploadDialog({ open, onOpenChange }: FileUploadDialogProps) 
             </div>
           )}
 
-          {isUploading && uploadProgress < 100 && (
+          {isUploading && (
             <div className="mt-4">
               <Progress value={uploadProgress} className="w-full" />
               <p className="text-sm text-center text-muted-foreground mt-2">{uploadProgress.toFixed(0)}%</p>
             </div>
           )}
-
+          
           {uploadProgress === 100 && (
             <div className="mt-4 flex items-center justify-center gap-2 text-green-600">
                 <CheckCircle2 className="h-5 w-5" />
